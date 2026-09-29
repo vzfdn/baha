@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -137,4 +138,21 @@ func TestFetchBody(t *testing.T) {
 			t.Errorf("error leaked API key: %v", err)
 		}
 	})
+}
+
+// TestBaseURLsParse validates the real production inputs that fetchBody's
+// defensive url.Parse branch assumes are well-formed. It does not cover that
+// branch and manufactures no inputs; a failure here means a base-URL
+// constant was corrupted.
+func TestBaseURLsParse(t *testing.T) {
+	for name, raw := range map[string]string{
+		"cryptoBaseURL":       cryptoBaseURL,
+		"goldCurrencyBaseURL": goldCurrencyBaseURL,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := url.Parse(raw); err != nil {
+				t.Errorf("url.Parse(%s = %q) error = %v, want nil", name, raw, err)
+			}
+		})
+	}
 }
