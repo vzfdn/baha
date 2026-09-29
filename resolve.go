@@ -78,6 +78,8 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 func lookupHolding(byName map[string]Holding, key, itemName string) (Holding, error) {
 	h, ok := byName[key]
 	if !ok {
+		// Fires if a matched name is missing from byName, indicating a
+		// call-site bug.
 		return Holding{}, fmt.Errorf("internal error: matched item %q has no corresponding holding", itemName)
 	}
 	return h, nil

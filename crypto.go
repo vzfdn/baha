@@ -54,7 +54,6 @@ func fetchCrypto(ctx context.Context, client *http.Client, baseURL, apiKey strin
 		if err := dec.Decode(&item); err != nil {
 			return nil, fmt.Errorf("decoding item: %w", err)
 		}
-
 		key := normalizeName(item.NameEn)
 		if _, ok := wanted[key]; ok {
 			found = append(found, item)
@@ -62,14 +61,13 @@ func fetchCrypto(ctx context.Context, client *http.Client, baseURL, apiKey strin
 		}
 	}
 
-	// More() returns false both for a clean end-of-array and for a read
-	// error, so a truncation between items would otherwise go unnoticed.
-	// Decode catches truncations inside a value; this catches the rest.
+	// If some requested assets are still missing, verify that the array really
+	// ended cleanly rather than treating an incomplete response as a valid
+	// partial result.
 	if len(wanted) > 0 {
 		if _, err := dec.Token(); err != nil {
 			return nil, fmt.Errorf("reading array end: %w", err)
 		}
 	}
-
 	return found, nil
 }

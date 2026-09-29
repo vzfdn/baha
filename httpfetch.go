@@ -14,6 +14,8 @@ import (
 func fetchBody(ctx context.Context, client *http.Client, baseURL, apiKey string) (io.ReadCloser, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
+		// Fires on malformed percent-escapes or control characters; callers
+		// pass well-formed URLs.
 		return nil, fmt.Errorf("parsing base URL: %w", err)
 	}
 	q := u.Query()
@@ -22,6 +24,8 @@ func fetchBody(ctx context.Context, client *http.Client, baseURL, apiKey string)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
+		// Fires on invalid method, invalid URL, or nil ctx; none apply to
+		// current callers.
 		return nil, fmt.Errorf("creating request to %s: %w", u.Host, err)
 	}
 
