@@ -1,5 +1,3 @@
-// baha retrieves market data for requested assets and displays
-// the results in the terminal.
 package main
 
 import (
@@ -50,12 +48,12 @@ func main() {
 		log.Fatalf("could not resolve assets: %v", err)
 	}
 
-	if len(lookup.GoldCurrency) > 0 || len(lookup.Crypto) > 0 {
+	hasResults := len(lookup.GoldCurrency) > 0 || len(lookup.Crypto) > 0
+	if hasResults {
 		fmt.Println(renderResult(lookup))
 	}
-
 	if len(lookup.Missing) > 0 {
-		if len(lookup.GoldCurrency) == 0 && len(lookup.Crypto) == 0 {
+		if !hasResults {
 			log.Fatalf("none of the requested assets were found: %s", strings.Join(lookup.Missing, ", "))
 		}
 		log.Printf("not found: %s", strings.Join(lookup.Missing, ", "))

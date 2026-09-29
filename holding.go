@@ -17,7 +17,8 @@ type Holding struct {
 
 // parseHoldings parses asset arguments in the form "name" or "name=amount".
 // Asset names are compared case-insensitively and surrounding whitespace is
-// ignored. Invalid arguments are collected and returned as a single error.
+// ignored. A bare name produces a holding without an amount. Invalid
+// arguments are collected and returned as a single error.
 func parseHoldings(args []string) ([]Holding, error) {
 	var list []Holding
 	seen := make(map[string]struct{}, len(args))
