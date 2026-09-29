@@ -40,12 +40,12 @@ func fetchCrypto(ctx context.Context, client *http.Client, baseURL, apiKey strin
 	defer body.Close()
 
 	dec := json.NewDecoder(body)
-	t, err := dec.Token()
+	tok, err := dec.Token()
 	if err != nil {
 		return nil, fmt.Errorf("reading array start: %w", err)
 	}
-	if delim, ok := t.(json.Delim); !ok || delim != '[' {
-		return nil, fmt.Errorf("expected JSON array, got %v", t)
+	if delim, ok := tok.(json.Delim); !ok || delim != '[' {
+		return nil, fmt.Errorf("expected JSON array, got %v", tok)
 	}
 
 	found := make([]Crypto, 0, len(wanted))
