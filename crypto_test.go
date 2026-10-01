@@ -256,11 +256,6 @@ func TestFetchCrypto(t *testing.T) {
 	})
 
 	t.Run("truncated response returns error", func(t *testing.T) {
-		// A response body that promises 10000 bytes and delivers fewer must
-		// surface as an error, not as silent partial success. Which internal
-		// path reports the truncation (the loop's Decode, or the post-loop
-		// Token guard) depends on decoder buffering and is not part of the
-		// contract being tested.
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Length", "10000")
 			w.Write([]byte(`[{"name_en":"bitcoin"}`))
@@ -276,6 +271,67 @@ func TestFetchCrypto(t *testing.T) {
 		)
 		if err == nil {
 			t.Fatalf("fetchCrypto() error = nil, want error; got %+v", got)
+		}
+	})
+
+	t.Run("truncation after a comma returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "10000")
+			w.Write([]byte(`[{"name_en":"solana"},`))
+		}))
+		defer srv.Close()
+
+		_, err := fetchCrypto(
+			context.Background(),
+			srv.Client(),
+			srv.URL,
+			"test-key",
+			[]string{"bitcoin"},
+		)
+		if err == nil {
+			t.Fatal("fetchCrypto() error = nil, want error")
+		}
+	})
+
+	t.Run("truncation in trailing whitespace returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`[{"name_en":"solana"}  `))
+		}))
+		defer srv.Close()
+
+		_, err := fetchCrypto(
+			context.Background(),
+			srv.Client(),
+			srv.URL,
+			"test-key",
+			[]string{"bitcoin"},
+		)
+		if err == nil {
+			t.Fatal("fetchCrypto() error = nil, want error")
+		}
+	})
+
+	t.Run("empty array with unmatched names returns empty result", func(t *testing.T) {
+		// A complete (not truncated) empty array is a successful response:
+		// the post-loop Token consumes ']' cleanly and nothing is an error.
+		// Absent items are Missing-list concerns, not fetch errors.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`[]`))
+		}))
+		defer srv.Close()
+
+		got, err := fetchCrypto(
+			context.Background(),
+			srv.Client(),
+			srv.URL,
+			"test-key",
+			[]string{"bitcoin"},
+		)
+		if err != nil {
+			t.Fatalf("fetchCrypto() error = %v, want nil", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("fetchCrypto() = %+v, want empty", got)
 		}
 	})
 }
