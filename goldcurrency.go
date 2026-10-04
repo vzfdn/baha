@@ -24,10 +24,14 @@ type GoldCurrencyItem struct {
 type goldCurrencyResponse struct {
 	Gold     []GoldCurrencyItem `json:"gold"`
 	Currency []GoldCurrencyItem `json:"currency"`
+	// The endpoint also returns a "crypto" array; deliberately not decoded —
+	// crypto.go uses the fuller Cryptocurrency endpoint instead.
 }
 
-// fetchGoldCurrency retrieves and decodes the gold and currency market data.
-func fetchGoldCurrency(ctx context.Context, client *http.Client, baseURL, apiKey string) (*goldCurrencyResponse, error) {
+// fetchGoldCurrency retrieves the requested gold and currency market items.
+// Names are matched case-insensitively and ignoring surrounding whitespace.
+// It returns only items that were found; an absent item is not an error.
+func fetchGoldCurrency(ctx context.Context, client *http.Client, baseURL, apiKey string, names []string) ([]GoldCurrencyItem, error) {
 	body, err := fetchBody(ctx, client, baseURL, apiKey)
 	if err != nil {
 		return nil, err
@@ -37,7 +41,7 @@ func fetchGoldCurrency(ctx context.Context, client *http.Client, baseURL, apiKey
 	if err := json.NewDecoder(body).Decode(&gcr); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
-	return &gcr, nil
+	return selectAssets(append(gcr.Gold, gcr.Currency...), names), nil
 }
 
 // selectAssets returns the items in pool whose names match those in names,
@@ -51,7 +55,6 @@ func selectAssets(pool []GoldCurrencyItem, names []string) []GoldCurrencyItem {
 	if len(wanted) == 0 {
 		return nil
 	}
-
 	found := make([]GoldCurrencyItem, 0, len(wanted))
 	for _, item := range pool {
 		key := normalizeName(item.NameEn)

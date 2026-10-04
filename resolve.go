@@ -18,7 +18,7 @@ type AssetLookup struct {
 // resolveAssets resolves requested holdings against the available gold,
 // currency, and cryptocurrency market data. Assets that cannot be resolved
 // are returned in AssetLookup.Missing.
-//
+// 
 // Holdings are expected to be deduplicated by normalized name before being
 // passed in; parseHoldings enforces this. Duplicate holdings are not detected
 // here and the last one wins.
@@ -32,14 +32,12 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 
 	var result AssetLookup
 	found := make(map[string]struct{}, len(holdings))
-	goldCurrency, err := fetchGoldCurrency(ctx, client, goldCurrencyBaseURL, apiKey)
+
+	goldCurrency, err := fetchGoldCurrency(ctx, client, goldCurrencyBaseURL, apiKey, names)
 	if err != nil {
 		return AssetLookup{}, fmt.Errorf("fetching gold/currency: %w", err)
 	}
-	pool := make([]GoldCurrencyItem, 0, len(goldCurrency.Gold)+len(goldCurrency.Currency))
-	pool = append(pool, goldCurrency.Gold...)
-	pool = append(pool, goldCurrency.Currency...)
-	for _, item := range selectAssets(pool, names) {
+	for _, item := range goldCurrency {
 		key := normalizeName(item.NameEn)
 		h, err := lookupHolding(byName, key, item.NameEn)
 		if err != nil {

@@ -144,15 +144,15 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key")
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K", "US Dollar"})
 		if err != nil {
 			t.Fatalf("fetchGoldCurrency() error = %v", err)
 		}
 
-		if len(got.Gold) != 1 {
-			t.Fatalf("len(got.Gold) = %d, want 1", len(got.Gold))
+		if len(got) != 2 {
+			t.Fatalf("len(got) = %d, want 2", len(got))
 		}
-		g := got.Gold[0]
+		g := got[0]
 		if g.Date != "1403/06/31" {
 			t.Errorf("Gold.Date = %q, want %q", g.Date, "1403/06/31")
 		}
@@ -178,10 +178,7 @@ func TestFetchGoldCurrency(t *testing.T) {
 			t.Errorf("Gold.Unit = %q, want %q", g.Unit, "Toman/gram")
 		}
 
-		if len(got.Currency) != 1 {
-			t.Fatalf("len(got.Currency) = %d, want 1", len(got.Currency))
-		}
-		c := got.Currency[0]
+		c := got[1]
 		if c.Date != "1403/06/31" {
 			t.Errorf("Currency.Date = %q, want %q", c.Date, "1403/06/31")
 		}
@@ -202,24 +199,18 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}
 	})
 
-	t.Run("success with empty arrays", func(t *testing.T) {
+	t.Run("empty arrays return no matches", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"gold":[],"currency":[]}`))
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key")
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
 		if err != nil {
 			t.Fatalf("fetchGoldCurrency() error = %v", err)
 		}
-		if got == nil {
-			t.Fatal("fetchGoldCurrency() = nil, want non-nil response")
-		}
-		if len(got.Gold) != 0 {
-			t.Errorf("len(got.Gold) = %d, want 0", len(got.Gold))
-		}
-		if len(got.Currency) != 0 {
-			t.Errorf("len(got.Currency) = %d, want 0", len(got.Currency))
+		if len(got) != 0 {
+			t.Errorf("len(got) = %d, want 0", len(got))
 		}
 	})
 
@@ -229,7 +220,7 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key")
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
 		if err == nil {
 			t.Fatal("fetchGoldCurrency() error = nil, want error")
 		}
@@ -252,7 +243,7 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key")
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
 		if err == nil {
 			t.Fatal("fetchGoldCurrency() error = nil, want error")
 		}
