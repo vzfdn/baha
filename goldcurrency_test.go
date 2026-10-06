@@ -9,136 +9,97 @@ import (
 )
 
 func TestSelectAssets(t *testing.T) {
-	// Shared pool. selectAssets does not mutate its pool argument, so it is
-	// safe to reuse across subtests.
 	pool := []GoldCurrencyItem{
 		{NameEn: "gold", Symbol: "XAU"},
 		{NameEn: "silver", Symbol: "XAG"},
 		{NameEn: "USD", Symbol: "USD"},
 		{NameEn: "Euro", Symbol: "EUR"},
 	}
+	dupPool := []GoldCurrencyItem{
+		{NameEn: "gold", Symbol: "FIRST"},
+		{NameEn: "gold", Symbol: "SECOND"},
+	}
 
-	t.Run("empty names returns nil", func(t *testing.T) {
-		got := selectAssets(pool, nil)
-		if got != nil {
-			t.Errorf("selectAssets() = %#v, want nil", got)
-		}
-	})
+	tests := []struct {
+		name string
+		pool []GoldCurrencyItem
+		req  []string
+		want []string // expected NameEn values, in order; nil means expect a nil slice
+	}{
+		{name: "empty names returns nil", pool: pool, req: nil, want: nil},
+		{name: "exact name match", pool: pool, req: []string{"gold"}, want: []string{"gold"}},
+		{name: "case-insensitive match", pool: pool, req: []string{"GOLD"}, want: []string{"gold"}},
+		{name: "request name is trimmed", pool: pool, req: []string{"  Euro  "}, want: []string{"Euro"}},
+		{name: "pool item is normalized for matching but preserved in result", pool: pool, req: []string{"usd"}, want: []string{"USD"}},
+		{name: "duplicate requested names produce one result", pool: pool, req: []string{"gold", "Gold", " GOLD "}, want: []string{"gold"}},
+		{name: "multiple matches return in pool order", pool: pool, req: []string{"silver", "gold"}, want: []string{"gold", "silver"}},
+		{
+			// The API's uniqueness assumption is documented but not enforced.
+			// A second pool item with the same name cannot match, guarding
+			// against two cards being rendered for one holding if the API
+			// returns a duplicate.
+			name: "duplicate pool names do not produce duplicate matches",
+			pool: dupPool, req: []string{"gold"}, want: []string{"gold"},
+		},
+		{name: "non-matching pool items are skipped", pool: pool, req: []string{"gold", "platinum"}, want: []string{"gold"}},
+	}
 
-	t.Run("exact name match", func(t *testing.T) {
-		got := selectAssets(pool, []string{"gold"})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "gold" {
-			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "gold")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectAssets(tt.pool, tt.req)
 
-	t.Run("case-insensitive match", func(t *testing.T) {
-		got := selectAssets(pool, []string{"GOLD"})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "gold" {
-			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "gold")
-		}
-	})
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("selectAssets() = %#v, want nil", got)
+				}
+				return
+			}
 
-	t.Run("request name is trimmed", func(t *testing.T) {
-		got := selectAssets(pool, []string{"  Euro  "})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "Euro" {
-			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "Euro")
-		}
-	})
-
-	t.Run("pool item is normalized for matching but preserved in result", func(t *testing.T) {
-		// The pool contains "USD" (uppercase). The request is lowercase.
-		// Matching succeeds via normalizeName, but the returned item keeps
-		// its original NameEn — normalization is a lookup concern, not a
-		// mutation of API data.
-		got := selectAssets(pool, []string{"usd"})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "USD" {
-			t.Errorf("got[0].NameEn = %q, want %q (original, not normalized)", got[0].NameEn, "USD")
-		}
-	})
-
-	t.Run("duplicate requested names produce one result", func(t *testing.T) {
-		got := selectAssets(pool, []string{"gold", "Gold", " GOLD "})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "gold" {
-			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "gold")
-		}
-	})
-
-	t.Run("duplicate pool names do not produce duplicate matches", func(t *testing.T) {
-		// The API's uniqueness assumption is documented but not enforced.
-		// selectAssets deletes each matched name from the wanted set, so a
-		// second pool item with the same name cannot match. This guards the
-		// resolver against rendering two cards for one holding if the API
-		// ever returns a duplicate.
-		dupPool := []GoldCurrencyItem{
-			{NameEn: "gold", Symbol: "FIRST"},
-			{NameEn: "gold", Symbol: "SECOND"},
-		}
-		got := selectAssets(dupPool, []string{"gold"})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1 (duplicates must not double-match)", len(got))
-		}
-	})
-
-	t.Run("non-matching pool items are skipped", func(t *testing.T) {
-		got := selectAssets(pool, []string{"gold", "platinum"})
-		if len(got) != 1 {
-			t.Fatalf("len(selectAssets()) = %d, want 1", len(got))
-		}
-		if got[0].NameEn != "gold" {
-			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "gold")
-		}
-	})
+			if len(got) != len(tt.want) {
+				t.Fatalf("len(selectAssets()) = %d, want %d", len(got), len(tt.want))
+			}
+			for i, wantName := range tt.want {
+				if got[i].NameEn != wantName {
+					t.Errorf("got[%d].NameEn = %q, want %q", i, got[i].NameEn, wantName)
+				}
+			}
+		})
+	}
 }
 
 func TestFetchGoldCurrency(t *testing.T) {
-	t.Run("success decodes both arrays with all fields", func(t *testing.T) {
-		// Raw JSON, not json.Marshal of the struct, so this test actually
-		// verifies the json tags on GoldCurrencyItem. If we encoded from the
-		// struct, a wrong tag would round-trip fine and the test would still
-		// pass.
-		const body = `{
-			"gold": [
-				{
-					"date": "1403/06/31",
-					"time": "14:30:00",
-					"name_en": "Gold 18K",
-					"symbol": "XAU18K",
-					"price": 12345678,
-					"change_percent": 1.25,
-					"market_cap": 987654321,
-					"unit": "Toman/gram"
-				}
-			],
-			"currency": [
-				{
-					"date": "1403/06/31",
-					"time": "14:30:00",
-					"name_en": "US Dollar",
-					"symbol": "USD",
-					"price": 900000,
-					"change_percent": -0.5,
-					"market_cap": 0,
-					"unit": "Toman"
-				}
-			]
-		}`
+	// Raw JSON, not json.Marshal of the struct, so this test actually
+	// verifies the json tags on GoldCurrencyItem. If we encoded from the
+	// struct, a wrong tag would round-trip fine and the test would still
+	// pass.
+	const body = `{
+		"gold": [
+			{
+				"date": "1403/06/31",
+				"time": "14:30:00",
+				"name_en": "Gold 18K",
+				"symbol": "XAU18K",
+				"price": 12345678,
+				"change_percent": 1.25,
+				"market_cap": 987654321,
+				"unit": "Toman/gram"
+			}
+		],
+		"currency": [
+			{
+				"date": "1403/06/31",
+				"time": "14:30:00",
+				"name_en": "US Dollar",
+				"symbol": "USD",
+				"price": 900000,
+				"change_percent": -0.5,
+				"market_cap": 0,
+				"unit": "Toman"
+			}
+		]
+	}`
 
+	t.Run("success decodes both arrays with all fields", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(body))
 		}))
@@ -152,7 +113,21 @@ func TestFetchGoldCurrency(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("len(got) = %d, want 2", len(got))
 		}
-		g := got[0]
+
+		// Matched by name rather than index: this test asserts which items
+		// came back, not the order they came back in.
+		find := func(name string) (GoldCurrencyItem, bool) {
+			for _, item := range got {
+				if item.NameEn == name {
+					return item, true
+				}
+			}
+			return GoldCurrencyItem{}, false
+		}
+		g, ok := find("Gold 18K")
+		if !ok {
+			t.Fatal("Gold 18K not in result")
+		}
 		if g.Date != "1403/06/31" {
 			t.Errorf("Gold.Date = %q, want %q", g.Date, "1403/06/31")
 		}
@@ -178,7 +153,10 @@ func TestFetchGoldCurrency(t *testing.T) {
 			t.Errorf("Gold.Unit = %q, want %q", g.Unit, "Toman/gram")
 		}
 
-		c := got[1]
+		c, ok := find("US Dollar")
+		if !ok {
+			t.Fatal("US Dollar not in result")
+		}
 		if c.Date != "1403/06/31" {
 			t.Errorf("Currency.Date = %q, want %q", c.Date, "1403/06/31")
 		}
@@ -196,6 +174,45 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}
 		if c.Unit != "Toman" {
 			t.Errorf("Currency.Unit = %q, want %q", c.Unit, "Toman")
+		}
+	})
+
+	// Each requests one name against the two-item fixture, so both fail if
+	// fetchGoldCurrency ever drops the selectAssets call and returns the
+	// whole pool unfiltered.
+	t.Run("only a gold match returns one item", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		}))
+		defer srv.Close()
+
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
+		if err != nil {
+			t.Fatalf("fetchGoldCurrency() error = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("len(got) = %d, want 1", len(got))
+		}
+		if got[0].NameEn != "Gold 18K" {
+			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "Gold 18K")
+		}
+	})
+
+	t.Run("only a currency match returns one item", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		}))
+		defer srv.Close()
+
+		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"US Dollar"})
+		if err != nil {
+			t.Fatalf("fetchGoldCurrency() error = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("len(got) = %d, want 1", len(got))
+		}
+		if got[0].NameEn != "US Dollar" {
+			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "US Dollar")
 		}
 	})
 

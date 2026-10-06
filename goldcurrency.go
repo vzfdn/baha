@@ -37,6 +37,7 @@ func fetchGoldCurrency(ctx context.Context, client *http.Client, baseURL, apiKey
 		return nil, err
 	}
 	defer body.Close()
+
 	var gcr goldCurrencyResponse
 	if err := json.NewDecoder(body).Decode(&gcr); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
@@ -46,15 +47,17 @@ func fetchGoldCurrency(ctx context.Context, client *http.Client, baseURL, apiKey
 
 // selectAssets returns the items in pool whose names match those in names,
 // ignoring case and surrounding whitespace. Each matching name is returned
-// at most once.
+// at most once. Results follow pool order, not request order.
 func selectAssets(pool []GoldCurrencyItem, names []string) []GoldCurrencyItem {
 	wanted := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		wanted[normalizeName(name)] = struct{}{}
 	}
+
 	if len(wanted) == 0 {
 		return nil
 	}
+
 	found := make([]GoldCurrencyItem, 0, len(wanted))
 	for _, item := range pool {
 		key := normalizeName(item.NameEn)
