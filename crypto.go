@@ -26,8 +26,8 @@ type Crypto struct {
 // it stops reading once all requested items have been found.
 func fetchCrypto(ctx context.Context, client *http.Client, baseURL, apiKey string, names []string) ([]Crypto, error) {
 	wanted := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		wanted[normalizeName(n)] = struct{}{}
+	for _, name := range names {
+		wanted[normalizeName(name)] = struct{}{}
 	}
 	if len(wanted) == 0 {
 		return nil, nil

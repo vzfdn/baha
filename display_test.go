@@ -326,7 +326,6 @@ func TestGoldCurrencyCard(t *testing.T) {
 			t.Errorf("computed value should be present\nrows:\n%s", joined)
 		}
 	})
-
 }
 
 func TestCryptoCard(t *testing.T) {

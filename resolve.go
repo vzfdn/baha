@@ -18,7 +18,7 @@ type AssetLookup struct {
 // resolveAssets resolves requested holdings against the available gold,
 // currency, and cryptocurrency market data. Assets that cannot be resolved
 // are returned in AssetLookup.Missing.
-// 
+//
 // Holdings are expected to be deduplicated by normalized name before being
 // passed in; parseHoldings enforces this. Duplicate holdings are not detected
 // here and the last one wins.

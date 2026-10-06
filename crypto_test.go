@@ -18,13 +18,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			nil,
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", nil)
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
@@ -60,13 +54,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{" Bitcoin ", "ETHEREUM"},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{" Bitcoin ", "ETHEREUM"})
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
@@ -95,13 +83,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin", "ethereum"},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin", "ethereum"})
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
@@ -126,13 +108,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin", "Bitcoin", " BITCOIN "},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin", "Bitcoin", " BITCOIN "})
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
@@ -151,13 +127,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -169,13 +139,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -187,13 +151,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -211,13 +169,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin", "ethereum"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin", "ethereum"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -233,13 +185,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin", "ethereum"},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin", "ethereum"})
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
@@ -262,13 +208,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin", "ethereum"},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin", "ethereum"})
 		if err == nil {
 			t.Fatalf("fetchCrypto() error = nil, want error; got %+v", got)
 		}
@@ -281,13 +221,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -299,13 +233,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		_, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		_, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err == nil {
 			t.Fatal("fetchCrypto() error = nil, want error")
 		}
@@ -320,13 +248,7 @@ func TestFetchCrypto(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(
-			context.Background(),
-			srv.Client(),
-			srv.URL,
-			"test-key",
-			[]string{"bitcoin"},
-		)
+		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", []string{"bitcoin"})
 		if err != nil {
 			t.Fatalf("fetchCrypto() error = %v, want nil", err)
 		}

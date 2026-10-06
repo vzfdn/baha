@@ -35,7 +35,7 @@ func parseHoldings(args []string) ([]Holding, error) {
 			continue
 		}
 		key := normalizeName(name)
-		if _, exists := seen[key]; exists {
+		if _, ok := seen[key]; ok {
 			errs = append(errs, fmt.Errorf("duplicate entry for %q", name))
 			continue
 		}
