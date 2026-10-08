@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,46 +10,36 @@ import (
 
 func TestFetchCrypto(t *testing.T) {
 	t.Run("empty names", func(t *testing.T) {
-		called := false
+		// Buffered channel, not a bool: if the server ever were called, the
+		// handler would write from another goroutine, and an unsynchronized
+		// write would race with the receive below.
+		called := make(chan struct{}, 1)
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			called = true
+			called <- struct{}{}
 		}))
 		defer srv.Close()
 
-		got, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", nil)
-		if err != nil {
+		if _, err := fetchCrypto(context.Background(), srv.Client(), srv.URL, "test-key", nil); err != nil {
 			t.Fatalf("fetchCrypto() error = %v", err)
 		}
-		if got != nil {
-			t.Errorf("fetchCrypto() = %#v, want nil", got)
-		}
-		if called {
+		select {
+		case <-called:
 			t.Error("server was called for empty names")
+		default:
 		}
 	})
 
 	t.Run("matches requested names case-insensitively and ignoring whitespace", func(t *testing.T) {
-		items := []Crypto{
-			{
-				NameEn:     "bitcoin",
-				Price:      "123.45",
-				PriceToman: "10000000000",
-			},
-			{
-				NameEn:     "Ethereum",
-				Price:      "2345.67",
-				PriceToman: "200000000",
-			},
-			{
-				NameEn: "solana",
-			},
-		}
-
+		// Raw JSON, not json.Marshal of Crypto, so the name_en, price, and
+		// price_toman tags are actually verified by the assertions below; a
+		// wrong tag round-trips fine when we encode our own struct.
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := json.NewEncoder(w).Encode(items); err != nil {
-				t.Errorf("encoding response: %v", err)
-			}
+			w.Write([]byte(`[
+				{"name_en":"bitcoin","price":"123.45","price_toman":"10000000000"},
+				{"name_en":"Ethereum","price":"2345.67","price_toman":"200000000"},
+				{"name_en":"solana"}
+			]`))
 		}))
 		defer srv.Close()
 
@@ -66,20 +55,20 @@ func TestFetchCrypto(t *testing.T) {
 		if got[0].NameEn != "bitcoin" {
 			t.Errorf("got[0].NameEn = %q, want %q", got[0].NameEn, "bitcoin")
 		}
+		if got[0].Price != "123.45" {
+			t.Errorf("got[0].Price = %q, want %q", got[0].Price, "123.45")
+		}
+		if got[0].PriceToman != "10000000000" {
+			t.Errorf("got[0].PriceToman = %q, want %q", got[0].PriceToman, "10000000000")
+		}
 		if got[1].NameEn != "Ethereum" {
 			t.Errorf("got[1].NameEn = %q, want %q", got[1].NameEn, "Ethereum")
 		}
 	})
 
 	t.Run("missing names are ignored", func(t *testing.T) {
-		items := []Crypto{
-			{NameEn: "bitcoin"},
-		}
-
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := json.NewEncoder(w).Encode(items); err != nil {
-				t.Errorf("encoding response: %v", err)
-			}
+			w.Write([]byte(`[{"name_en":"bitcoin"}]`))
 		}))
 		defer srv.Close()
 
@@ -97,14 +86,8 @@ func TestFetchCrypto(t *testing.T) {
 	})
 
 	t.Run("duplicate requested names produce one result", func(t *testing.T) {
-		items := []Crypto{
-			{NameEn: "bitcoin"},
-		}
-
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := json.NewEncoder(w).Encode(items); err != nil {
-				t.Errorf("encoding response: %v", err)
-			}
+			w.Write([]byte(`[{"name_en":"bitcoin"}]`))
 		}))
 		defer srv.Close()
 

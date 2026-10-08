@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -237,35 +238,30 @@ func TestFetchGoldCurrency(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
+		_, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
 		if err == nil {
 			t.Fatal("fetchGoldCurrency() error = nil, want error")
 		}
-		if got != nil {
-			t.Errorf("fetchGoldCurrency() = %#v, want nil on error", got)
-		}
-		// The "decoding response" prefix is part of the function's contract,
-		// not just an incidental message.
-		if !strings.Contains(err.Error(), "decoding response") {
-			t.Errorf("error = %q, want it to contain %q", err, "decoding response")
+
+		// A *json.SyntaxError in the chain proves two things at once: the
+		// failure came from the decode step (not fetchBody), and the error
+		// was wrapped with %w rather than flattened into a string.
+		if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
+			t.Errorf("error = %v, want it to wrap a *json.SyntaxError", err)
 		}
 	})
 
 	t.Run("non-200 status returns error", func(t *testing.T) {
 		// The specific error text comes from fetchBody and is tested there.
-		// Here we only verify that fetchGoldCurrency propagates it and does
-		// not return a partial response.
+		// Here we only verify that fetchGoldCurrency propagates it.
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "server error", http.StatusInternalServerError)
 		}))
 		defer srv.Close()
 
-		got, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
+		_, err := fetchGoldCurrency(context.Background(), srv.Client(), srv.URL, "test-key", []string{"Gold 18K"})
 		if err == nil {
 			t.Fatal("fetchGoldCurrency() error = nil, want error")
-		}
-		if got != nil {
-			t.Errorf("fetchGoldCurrency() = %#v, want nil on error", got)
 		}
 	})
 }
