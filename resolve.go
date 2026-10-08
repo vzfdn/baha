@@ -39,11 +39,7 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	}
 	for _, item := range goldCurrency {
 		key := normalizeName(item.NameEn)
-		h, err := lookupHolding(byName, key, item.NameEn)
-		if err != nil {
-			return AssetLookup{}, err
-		}
-		result.GoldCurrency = append(result.GoldCurrency, GoldCurrencyMatch{Holding: h, Item: item})
+		result.GoldCurrency = append(result.GoldCurrency, GoldCurrencyMatch{Holding: byName[key], Item: item})
 		found[key] = struct{}{}
 	}
 
@@ -53,11 +49,7 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	}
 	for _, item := range crypto {
 		key := normalizeName(item.NameEn)
-		h, err := lookupHolding(byName, key, item.NameEn)
-		if err != nil {
-			return AssetLookup{}, err
-		}
-		m, err := newCryptoMatch(h, item)
+		m, err := newCryptoMatch(byName[key], item)
 		if err != nil {
 			return AssetLookup{}, fmt.Errorf("processing crypto data: %w", err)
 		}
@@ -71,16 +63,6 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 		}
 	}
 	return result, nil
-}
-
-func lookupHolding(byName map[string]Holding, key, itemName string) (Holding, error) {
-	h, ok := byName[key]
-	if !ok {
-		// Fires if a matched name is missing from byName, indicating a
-		// call-site bug.
-		return Holding{}, fmt.Errorf("internal error: matched item %q has no corresponding holding", itemName)
-	}
-	return h, nil
 }
 
 // GoldCurrencyMatch pairs a requested Holding with the GoldCurrencyItem
@@ -111,7 +93,7 @@ type CryptoMatch struct {
 
 // newCryptoMatch creates a CryptoMatch after parsing the item's Toman price.
 func newCryptoMatch(h Holding, item Crypto) (CryptoMatch, error) {
-	priceToman, err := strconv.ParseFloat(string(item.PriceToman), 64)
+	priceToman, err := strconv.ParseFloat(item.PriceToman, 64)
 	if err != nil {
 		return CryptoMatch{}, fmt.Errorf("parsing price_toman for %s: %w", item.NameEn, err)
 	}

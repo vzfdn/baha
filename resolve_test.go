@@ -120,6 +120,10 @@ func TestResolveAssets(t *testing.T) {
 		if got.Crypto[0].Item.NameEn != "bitcoin" {
 			t.Errorf("matched name = %q, want %q", got.Crypto[0].Item.NameEn, "bitcoin")
 		}
+		// Pairs the match with the Holding the user actually asked for.
+		if got.Crypto[0].Holding.name != "bitcoin" {
+			t.Errorf("holding name = %q, want %q", got.Crypto[0].Holding.name, "bitcoin")
+		}
 		// Integration check: resolveAssets must have constructed the match
 		// via newCryptoMatch, otherwise value() returns zero here even though
 		// TestNewCryptoMatch still passes on its own. Asserting through the
