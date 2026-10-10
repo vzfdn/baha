@@ -108,5 +108,5 @@ func (cm CryptoMatch) value() (toman float64, ok bool) {
 }
 
 func (cm CryptoMatch) formatAmount() string {
-	return numPrinter.Sprintf("%g", cm.Holding.amount)
+    return strconv.FormatFloat(cm.Holding.amount, 'f', -1, 64)
 }

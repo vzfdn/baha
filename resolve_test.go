@@ -407,12 +407,33 @@ func TestCryptoMatch(t *testing.T) {
 		}
 	})
 
-	t.Run("formatAmount preserves fractional amounts", func(t *testing.T) {
-		// Crypto amounts are frequently fractional (e.g. 0.002 BTC); the
-		// formatter uses %g so small values survive display intact.
-		m := CryptoMatch{Holding: Holding{amount: 0.002, hasAmount: true}}
-		if got := m.formatAmount(); got != "0.002" {
-			t.Errorf("formatAmount() = %q, want %q", got, "0.002")
+	t.Run("formatAmount", func(t *testing.T) {
+		tests := []struct {
+			name string
+			amount float64
+			want string
+		}{
+			{
+				name:   "fractional amount",
+				amount: 0.002,
+				want:   "0.002",
+			},
+			{
+				name:   "small amount without scientific notation",
+				amount: 0.00001,
+				want:   "0.00001",
+			},
+		}
+	
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				m := CryptoMatch{
+					Holding: Holding{amount: tt.amount, hasAmount: true},
+				}
+				if got := m.formatAmount(); got != tt.want {
+					t.Errorf("formatAmount() = %q, want %q", got, tt.want)
+				}
+			})
 		}
 	})
 }
