@@ -2,26 +2,32 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 )
 
-// AssetLookup contains the market data resolved for requested assets,
-// along with the names that could not be found.
+// AssetLookup contains resolved market data and classifies requested names
+// that could not be resolved.
+//
+// Missing contains names absent from all successfully queried sources.
+// Unverified contains names that could not be fully checked because a
+// relevant source failed. A name cannot appear in both.
 type AssetLookup struct {
 	GoldCurrency []GoldCurrencyMatch
 	Crypto       []CryptoMatch
 	Missing      []string
+	Unverified   []string
 }
 
 // resolveAssets resolves requested holdings against the available gold,
-// currency, and cryptocurrency market data. Assets that cannot be resolved
-// are returned in AssetLookup.Missing.
+// currency, and cryptocurrency market data. It retains partial results
+// when either source fails and returns the collected errors.
 //
-// Holdings are expected to be deduplicated by normalized name before being
-// passed in; parseHoldings enforces this. Duplicate holdings are not detected
-// here and the last one wins.
+// Holdings must be deduplicated by normalized name before being passed in;
+// parseHoldings enforces this. Duplicate holdings are not detected here and
+// the last one wins.
 func resolveAssets(ctx context.Context, client *http.Client, apiKey string, holdings []Holding) (AssetLookup, error) {
 	byName := make(map[string]Holding, len(holdings))
 	names := make([]string, len(holdings))
@@ -33,9 +39,9 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	var result AssetLookup
 	found := make(map[string]struct{}, len(holdings))
 
-	goldCurrency, err := fetchGoldCurrency(ctx, client, goldCurrencyBaseURL, apiKey, names)
-	if err != nil {
-		return AssetLookup{}, fmt.Errorf("fetching gold/currency: %w", err)
+	goldCurrency, goldErr := fetchGoldCurrency(ctx, client, goldCurrencyBaseURL, apiKey, names)
+	if goldErr != nil {
+		goldErr = fmt.Errorf("fetching gold/currency: %w", goldErr)
 	}
 	for _, item := range goldCurrency {
 		key := normalizeName(item.NameEn)
@@ -43,9 +49,9 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 		found[key] = struct{}{}
 	}
 
-	crypto, err := fetchCrypto(ctx, client, cryptoBaseURL, apiKey, names)
-	if err != nil {
-		return AssetLookup{}, fmt.Errorf("fetching crypto: %w", err)
+	crypto, cryptoErr := fetchCrypto(ctx, client, cryptoBaseURL, apiKey, names)
+	if cryptoErr != nil {
+		cryptoErr = fmt.Errorf("fetching crypto: %w", cryptoErr)
 	}
 	for _, item := range crypto {
 		key := normalizeName(item.NameEn)
@@ -59,10 +65,14 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 
 	for _, h := range holdings {
 		if _, ok := found[normalizeName(h.name)]; !ok {
-			result.Missing = append(result.Missing, h.name)
+			if goldErr == nil && cryptoErr == nil {
+				result.Missing = append(result.Missing, h.name)
+			} else {
+				result.Unverified = append(result.Unverified, h.name)
+			}
 		}
 	}
-	return result, nil
+	return result, errors.Join(goldErr, cryptoErr)
 }
 
 // GoldCurrencyMatch pairs a requested Holding with the GoldCurrencyItem
@@ -108,5 +118,5 @@ func (cm CryptoMatch) value() (toman float64, ok bool) {
 }
 
 func (cm CryptoMatch) formatAmount() string {
-    return strconv.FormatFloat(cm.Holding.amount, 'f', -1, 64)
+	return strconv.FormatFloat(cm.Holding.amount, 'f', -1, 64)
 }

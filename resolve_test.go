@@ -222,17 +222,119 @@ func TestResolveAssets(t *testing.T) {
 		}
 	})
 
-	t.Run("gold fetch error is wrapped", func(t *testing.T) {
+	t.Run("gold fetch error preserves crypto results as partial", func(t *testing.T) {
 		// Empty gold body -> fakeClient returns 500 -> fetchBody returns
-		// error -> fetchGoldCurrency propagates -> resolveAssets wraps.
-		client := fakeClient(t, "", mustJSON(t, []Crypto{}))
+		// error -> fetchGoldCurrency propagates -> resolveAssets wraps, but
+		// still queries crypto and keeps whatever it found there.
+		client := fakeClient(t, "", mustJSON(t, []Crypto{
+			{NameEn: "bitcoin", PriceToman: "3000000000"},
+		}))
 
-		_, err := resolveAssets(context.Background(), client, "test-key", []Holding{{name: "gold"}})
+		holdings := []Holding{{name: "bitcoin", amount: 0.5, hasAmount: true}, {name: "gold"}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
 		if err == nil {
 			t.Fatal("resolveAssets() error = nil, want error")
 		}
 		if !strings.Contains(err.Error(), "fetching gold/currency") {
 			t.Errorf("error = %q, want it to contain %q", err, "fetching gold/currency")
+		}
+		if len(got.Crypto) != 1 || got.Crypto[0].Item.NameEn != "bitcoin" {
+			t.Fatalf("got.Crypto = %+v, want the bitcoin match retained", got.Crypto)
+		}
+		v, ok := got.Crypto[0].value()
+		if !ok || v != 1500000000 {
+			t.Errorf("value() = (%v, %v), want (1500000000, true)", v, ok)
+		}
+		// "gold" was never checked against the (failed) gold/currency source,
+		// so it cannot be classified as missing.
+		if len(got.Unverified) != 1 || got.Unverified[0] != "gold" {
+			t.Errorf("got.Unverified = %+v, want [gold]", got.Unverified)
+		}
+		if len(got.Missing) != 0 {
+			t.Errorf("got.Missing = %+v, want none", got.Missing)
+		}
+	})
+
+	t.Run("crypto fetch error preserves gold results as partial", func(t *testing.T) {
+		client := fakeClient(t, mustJSON(t, goldCurrencyResponse{
+			Gold: []GoldCurrencyItem{{NameEn: "gold", Symbol: "XAU", Price: 1000}},
+		}), "")
+
+		holdings := []Holding{{name: "gold"}, {name: "bitcoin"}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "fetching crypto") {
+			t.Errorf("error = %q, want it to contain %q", err, "fetching crypto")
+		}
+		if len(got.GoldCurrency) != 1 || got.GoldCurrency[0].Item.NameEn != "gold" {
+			t.Fatalf("got.GoldCurrency = %+v, want the gold match retained", got.GoldCurrency)
+		}
+		if len(got.Unverified) != 1 || got.Unverified[0] != "bitcoin" {
+			t.Errorf("got.Unverified = %+v, want [bitcoin]", got.Unverified)
+		}
+		if len(got.Missing) != 0 {
+			t.Errorf("got.Missing = %+v, want none", got.Missing)
+		}
+	})
+
+	t.Run("both fetch errors are joined", func(t *testing.T) {
+		client := fakeClient(t, "", "")
+
+		holdings := []Holding{{name: "gold"}, {name: "bitcoin"}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "fetching gold/currency") || !strings.Contains(err.Error(), "fetching crypto") {
+			t.Errorf("error = %q, want both source failures reported", err)
+		}
+		if len(got.GoldCurrency) != 0 || len(got.Crypto) != 0 {
+			t.Errorf("expected empty results on total failure, got %+v", got)
+		}
+		// No source to verify against, so nothing is Missing; Unverified
+		// keeps holdings order.
+		if len(got.Missing) != 0 {
+			t.Errorf("got.Missing = %+v, want none", got.Missing)
+		}
+		if len(got.Unverified) != 2 || got.Unverified[0] != "gold" || got.Unverified[1] != "bitcoin" {
+			t.Errorf("got.Unverified = %+v, want [gold bitcoin]", got.Unverified)
+		}
+	})
+
+	t.Run("errors do not leak the API key", func(t *testing.T) {
+		client := fakeClient(t, "", "")
+
+		_, err := resolveAssets(context.Background(), client, "secret-test-key", []Holding{{name: "gold"}})
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if strings.Contains(err.Error(), "secret-test-key") {
+			t.Errorf("error leaks the API key: %q", err)
+		}
+	})
+
+	t.Run("both sources succeed: unmatched asset is Missing, never Unverified", func(t *testing.T) {
+		client := fakeClient(
+			t,
+			mustJSON(t, goldCurrencyResponse{
+				Gold: []GoldCurrencyItem{{NameEn: "gold", Price: 1000}},
+			}),
+			mustJSON(t, []Crypto{}),
+		)
+
+		// Both sources responded successfully, so "ethereum" was fully
+		// checked and can be declared Missing; it must not land in Unverified.
+		got, err := resolveAssets(context.Background(), client, "test-key", []Holding{{name: "gold"}, {name: "ethereum"}})
+		if err != nil {
+			t.Fatalf("resolveAssets() error = %v", err)
+		}
+		if len(got.Missing) != 1 || got.Missing[0] != "ethereum" {
+			t.Errorf("got.Missing = %+v, want [ethereum]", got.Missing)
+		}
+		if len(got.Unverified) != 0 {
+			t.Errorf("got.Unverified = %+v, want none", got.Unverified)
 		}
 	})
 
@@ -409,9 +511,9 @@ func TestCryptoMatch(t *testing.T) {
 
 	t.Run("formatAmount", func(t *testing.T) {
 		tests := []struct {
-			name string
+			name   string
 			amount float64
-			want string
+			want   string
 		}{
 			{
 				name:   "fractional amount",
@@ -424,7 +526,7 @@ func TestCryptoMatch(t *testing.T) {
 				want:   "0.00001",
 			},
 		}
-	
+
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				m := CryptoMatch{

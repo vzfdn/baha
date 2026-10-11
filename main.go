@@ -44,11 +44,26 @@ func main() {
 	defer cancel()
 
 	lookup, err := resolveAssets(ctx, &http.Client{}, apiKey, holdings)
-	if err != nil {
-		log.Fatalf("could not resolve assets: %v", err)
+
+	// Keep partial results when a source fails; exit nonzero only if
+	// nothing could be resolved.
+	hasResults := len(lookup.GoldCurrency) > 0 || len(lookup.Crypto) > 0
+
+	// Missing and Unverified are mutually exclusive, so report Unverified
+	// before the fatal branches to preserve the names on total failure.
+	if len(lookup.Unverified) > 0 {
+		// Softer than Missing: these names might still exist in a source
+		// that could not be queried.
+		log.Printf("could not check: %s", strings.Join(lookup.Unverified, ", "))
 	}
 
-	hasResults := len(lookup.GoldCurrency) > 0 || len(lookup.Crypto) > 0
+	if err != nil {
+		if !hasResults {
+			log.Fatalf("could not resolve assets: %v", err)
+		}
+		log.Printf("some market data could not be retrieved: %v", err)
+	}
+
 	if hasResults {
 		fmt.Println(renderResult(lookup))
 	}
