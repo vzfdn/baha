@@ -61,7 +61,9 @@ func main() {
 		if !hasResults {
 			log.Fatalf("could not resolve assets: %v", err)
 		}
-		log.Printf("some market data could not be retrieved: %v", err)
+		// Source failures and unusable prices alike are warning-level here
+		// because there are still results to show.
+		log.Printf("warnings while resolving assets: %v", err)
 	}
 
 	if hasResults {

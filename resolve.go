@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 )
@@ -53,13 +54,18 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	if cryptoErr != nil {
 		cryptoErr = fmt.Errorf("fetching crypto: %w", cryptoErr)
 	}
+	// Item-level price failures are reported but do not abort the loop:
+	// the remaining requested cryptocurrencies with valid prices are kept.
+	var itemErrs []error
 	for _, item := range crypto {
 		key := normalizeName(item.NameEn)
 		m, err := newCryptoMatch(byName[key], item)
 		if err != nil {
-			return AssetLookup{}, fmt.Errorf("processing crypto data: %w", err)
+			itemErrs = append(itemErrs, fmt.Errorf("price unavailable: %w", err))
 		}
 		result.Crypto = append(result.Crypto, m)
+		// The asset was found even if its price is unusable, so it must not
+		// be classified as Missing or Unverified.
 		found[key] = struct{}{}
 	}
 
@@ -72,7 +78,7 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 			}
 		}
 	}
-	return result, errors.Join(goldErr, cryptoErr)
+	return result, errors.Join(append([]error{goldErr, cryptoErr}, itemErrs...)...)
 }
 
 // GoldCurrencyMatch pairs a requested Holding with the GoldCurrencyItem
@@ -94,24 +100,51 @@ func (gcm GoldCurrencyMatch) formatAmount() string {
 }
 
 // CryptoMatch pairs a requested Holding with the Crypto item that resolved
-// it. priceToman stores Item.PriceToman parsed as a number during construction.
+// it. priceToman stores Item.PriceToman parsed as a number, only when the
+// price is usable. priceUnavailable marks an item that was resolved without
+// a usable price; value() never computes with such a price, so an
+// unavailable price is distinguishable from a real calculated value of zero.
 type CryptoMatch struct {
-	Holding    Holding
-	Item       Crypto
-	priceToman float64
+	Holding          Holding
+	Item             Crypto
+	priceToman       float64
+	priceUnavailable bool
 }
 
-// newCryptoMatch creates a CryptoMatch after parsing the item's Toman price.
-func newCryptoMatch(h Holding, item Crypto) (CryptoMatch, error) {
-	priceToman, err := strconv.ParseFloat(item.PriceToman, 64)
+// checkPriceToman parses and validates the item's Toman price. Parsing
+// alone is not enough: strconv.ParseFloat also accepts NaN, infinities,
+// negatives, and zero, none of which are usable prices. Only a positive,
+// finite price is accepted: the API sample pairs Tether's non-zero USD price
+// ("0.9989") with price_toman "0", which is more consistent with missing or
+// unconverted data than with a real zero valuation.
+func checkPriceToman(item Crypto) (float64, error) {
+	p, err := strconv.ParseFloat(item.PriceToman, 64)
 	if err != nil {
-		return CryptoMatch{}, fmt.Errorf("parsing price_toman for %s: %w", item.NameEn, err)
+		return 0, fmt.Errorf("parsing price_toman for %s: %w", item.NameEn, err)
 	}
-	return CryptoMatch{Holding: h, Item: item, priceToman: priceToman}, nil
+	if math.IsNaN(p) || math.IsInf(p, 0) || p <= 0 {
+		return 0, fmt.Errorf("price_toman for %s must be a positive, finite number, got %v", item.NameEn, p)
+	}
+	return p, nil
+}
+
+// newCryptoMatch creates a CryptoMatch after validating the item's Toman
+// price. When validation fails, the returned match is still complete with
+// priceUnavailable set, so the caller can keep it and record the error
+// separately instead of discarding the resolved asset.
+func newCryptoMatch(h Holding, item Crypto) (CryptoMatch, error) {
+	m := CryptoMatch{Holding: h, Item: item, priceUnavailable: true}
+	priceToman, err := checkPriceToman(item)
+	if err != nil {
+		return m, err
+	}
+	m.priceToman = priceToman
+	m.priceUnavailable = false
+	return m, nil
 }
 
 func (cm CryptoMatch) value() (toman float64, ok bool) {
-	if !cm.Holding.hasAmount {
+	if cm.priceUnavailable || !cm.Holding.hasAmount {
 		return 0, false
 	}
 	return cm.Holding.amount * cm.priceToman, true

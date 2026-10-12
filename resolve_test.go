@@ -126,8 +126,8 @@ func TestResolveAssets(t *testing.T) {
 		}
 		// Integration check: resolveAssets must have constructed the match
 		// via newCryptoMatch, otherwise value() returns zero here even though
-		// TestNewCryptoMatch still passes on its own. Asserting through the
-		// exported method keeps this test out of CryptoMatch's unexported
+		// TestNewCryptoMatch still passes on its own. Asserting through
+		// value() keeps this test out of CryptoMatch's unexported
 		// priceToman field, which is TestNewCryptoMatch's concern.
 		v, ok := got.Crypto[0].value()
 		if !ok {
@@ -350,7 +350,7 @@ func TestResolveAssets(t *testing.T) {
 		}
 	})
 
-	t.Run("malformed crypto price is wrapped", func(t *testing.T) {
+	t.Run("unusable crypto price is reported without aborting", func(t *testing.T) {
 		client := fakeClient(
 			t,
 			mustJSON(t, goldCurrencyResponse{}),
@@ -359,12 +359,147 @@ func TestResolveAssets(t *testing.T) {
 			}),
 		)
 
-		_, err := resolveAssets(context.Background(), client, "test-key", []Holding{{name: "bitcoin"}})
+		holdings := []Holding{{name: "bitcoin", amount: 1, hasAmount: true}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
 		if err == nil {
 			t.Fatal("resolveAssets() error = nil, want error")
 		}
-		if !strings.Contains(err.Error(), "processing crypto data") {
-			t.Errorf("error = %q, want it to contain %q", err, "processing crypto data")
+		if !strings.Contains(err.Error(), "price unavailable") {
+			t.Errorf("error = %q, want it to contain %q", err, "price unavailable")
+		}
+		// The resolved asset is kept as a match even though its price is
+		// unusable; nothing else exists to keep it company, and the error is
+		// warning-level in main because matches still render.
+		if len(got.Crypto) != 1 || got.Crypto[0].Item.NameEn != "bitcoin" || !got.Crypto[0].priceUnavailable {
+			t.Fatalf("got.Crypto = %+v, want the bitcoin match retained with priceUnavailable", got.Crypto)
+		}
+		// value() must not return a successful result from an unusable price.
+		if _, ok := got.Crypto[0].value(); ok {
+			t.Error("value() ok = true, want false for an unusable price")
+		}
+		// Found means found: no Missing, no Unverified, despite the item error.
+		if len(got.Missing) != 0 || len(got.Unverified) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
+		}
+	})
+
+	t.Run("invalid price between valid items preserves matches", func(t *testing.T) {
+		client := fakeClient(
+			t,
+			mustJSON(t, goldCurrencyResponse{}),
+			mustJSON(t, []Crypto{
+				{NameEn: "bitcoin", PriceToman: "3000000000"},
+				{NameEn: "ethereum", PriceToman: "NaN"},
+				{NameEn: "solana", PriceToman: "15000000"},
+			}),
+		)
+
+		holdings := []Holding{{name: "bitcoin", amount: 1, hasAmount: true}, {name: "ethereum", amount: 2, hasAmount: true}, {name: "solana", amount: 1, hasAmount: true}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "price unavailable") {
+			t.Errorf("error = %q, want it to contain %q", err, "price unavailable")
+		}
+		// Empty or malformed -> parse failure; NaN -> validation failure; the
+		// error carries the reason either way.
+		if !strings.Contains(err.Error(), "price_toman for ethereum") {
+			t.Errorf("error = %q, want it to name the offending item", err)
+		}
+		// Valid matches before and after the invalid item are retained; the
+		// invalid item is kept as a match too, with value() failing.
+		if len(got.Crypto) != 3 {
+			t.Fatalf("len(got.Crypto) = %d, want 3", len(got.Crypto))
+		}
+		if got.Crypto[0].priceUnavailable || got.Crypto[2].priceUnavailable {
+			t.Errorf("items 0/2 marked unavailable: %+v", got.Crypto)
+		}
+		if !got.Crypto[1].priceUnavailable {
+			t.Errorf("item 1 (ethereum) should be unavailable: %+v", got.Crypto[1])
+		}
+		v, _ := got.Crypto[0].value()
+		if v != 3000000000 {
+			t.Errorf("bitcoin value() = %v, want 3000000000", v)
+		}
+		v, _ = got.Crypto[2].value()
+		if v != 15000000 {
+			t.Errorf("solana value() = %v, want 15000000", v)
+		}
+		if len(got.Missing) != 0 || len(got.Unverified) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
+		}
+	})
+
+	t.Run("item errors and source errors coexist", func(t *testing.T) {
+		// Gold source fails (500) and bitcoin has an invalid price: both
+		// item-level and source-level problems must appear in the error, and
+		// the bitcoin match must survive.
+		client := fakeClient(
+			t,
+			"",
+			mustJSON(t, []Crypto{
+				{NameEn: "bitcoin", PriceToman: "not-a-number"},
+				{NameEn: "solana", PriceToman: "15000000"},
+			}),
+		)
+
+		holdings := []Holding{{name: "bitcoin"}, {name: "solana"}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "fetching gold/currency") {
+			t.Errorf("error = %q, want the source failure reported", err)
+		}
+		if !strings.Contains(err.Error(), "price unavailable") {
+			t.Errorf("error = %q, want the item failure reported", err)
+		}
+		if len(got.Crypto) != 2 {
+			t.Fatalf("len(got.Crypto) = %d, want 2", len(got.Crypto))
+		}
+		if !got.Crypto[0].priceUnavailable || got.Crypto[1].priceUnavailable {
+			t.Errorf("availability flags wrong: %+v", got.Crypto)
+		}
+		if len(got.Unverified) != 0 || len(got.Missing) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
+		}
+	})
+
+	t.Run("zero price is unavailable but the asset is retained", func(t *testing.T) {
+		client := fakeClient(
+			t,
+			mustJSON(t, goldCurrencyResponse{}),
+			mustJSON(t, []Crypto{
+				{NameEn: "bitcoin", PriceToman: "0"},
+				{NameEn: "solana", PriceToman: "15000000"},
+			}),
+		)
+
+		holdings := []Holding{{name: "bitcoin", amount: 10, hasAmount: true}, {name: "solana", amount: 1, hasAmount: true}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "price unavailable") || !strings.Contains(err.Error(), "price_toman for bitcoin") {
+			t.Errorf("error = %q, want the item-level price context for bitcoin", err)
+		}
+		// The zero-priced asset is still resolved, just not usable.
+		if len(got.Crypto) != 2 || !got.Crypto[0].priceUnavailable {
+			t.Fatalf("got.Crypto = %+v, want bitcoin retained with priceUnavailable", got.Crypto)
+		}
+		if v, ok := got.Crypto[0].value(); ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, false) despite amount 10", v, ok)
+		}
+		// A valid zero price is no longer possible: an unavailable price must
+		// never look like a real calculated value of zero.
+		v, ok := got.Crypto[1].value()
+		if !ok || v != 15000000 {
+			t.Errorf("solana value() = (%v, %v), want (15000000, true)", v, ok)
+		}
+		// Found means found, regardless of price usability.
+		if len(got.Missing) != 0 || len(got.Unverified) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
 		}
 	})
 
@@ -398,6 +533,84 @@ func TestResolveAssets(t *testing.T) {
 }
 
 func TestNewCryptoMatch(t *testing.T) {
+	t.Run("zero price is rejected as unavailable", func(t *testing.T) {
+		got, err := newCryptoMatch(Holding{name: "bitcoin", amount: 10, hasAmount: true}, Crypto{NameEn: "bitcoin", PriceToman: "0"})
+		if err == nil {
+			t.Fatal("newCryptoMatch() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "price_toman") || !strings.Contains(err.Error(), "bitcoin") {
+			t.Errorf("error = %q, want it to mention price_toman and the item name", err)
+		}
+		// Rejected prices still yield a populated match per the documented
+		// contract, and value() cannot compute from it.
+		if !got.priceUnavailable {
+			t.Error("priceUnavailable = false, want true")
+		}
+		if got.Item.NameEn != "bitcoin" {
+			t.Errorf("Item.NameEn = %q, want %q", got.Item.NameEn, "bitcoin")
+		}
+		if v, ok := got.value(); ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, false) despite amount 10", v, ok)
+		}
+	})
+
+	t.Run("invalid numeric prices are rejected", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			priceToman string
+		}{
+			{"NaN", "NaN"},
+			{"lowercase nan", "nan"},
+			{"positive infinity", "Inf"},
+			{"negative infinity", "-Inf"},
+			{"negative finite", "-5"},
+			{"zero", "0"},
+			{"negative zero", "-0"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := newCryptoMatch(Holding{}, Crypto{NameEn: "bitcoin", PriceToman: tt.priceToman})
+				if err == nil {
+					t.Fatalf("newCryptoMatch(%q) error = nil, want error", tt.priceToman)
+				}
+				// Name and failure context, not exact wording.
+				if !strings.Contains(err.Error(), "bitcoin") {
+					t.Errorf("error = %q, want it to mention the item name", err)
+				}
+				if !strings.Contains(err.Error(), "price_toman") {
+					t.Errorf("error = %q, want it to mention price_toman", err)
+				}
+				// Documented contract: the match is still returned so the
+				// caller can keep the resolved asset.
+			})
+		}
+	})
+
+	t.Run("unavailable-price error still returns a usable match", func(t *testing.T) {
+		h := Holding{name: "bitcoin", amount: 1, hasAmount: true}
+		item := Crypto{NameEn: "bitcoin", PriceToman: "-1"}
+
+		got, err := newCryptoMatch(h, item)
+		if err == nil {
+			t.Fatal("newCryptoMatch() error = nil, want error")
+		}
+		if !got.priceUnavailable {
+			t.Error("priceUnavailable = false, want true")
+		}
+		if got.priceToman != 0 {
+			t.Errorf("priceToman = %v, want the zero value, not a stale or garbage price", got.priceToman)
+		}
+		if got.Holding != h {
+			t.Errorf("Holding = %+v, want %+v", got.Holding, h)
+		}
+		if got.Item.NameEn != "bitcoin" {
+			t.Errorf("Item.NameEn = %q, want %q", got.Item.NameEn, "bitcoin")
+		}
+		if _, ok := got.value(); ok {
+			t.Error("value() ok = true, want false on the returned match")
+		}
+	})
+
 	t.Run("valid price parses", func(t *testing.T) {
 		h := Holding{name: "bitcoin", amount: 1, hasAmount: true}
 		item := Crypto{NameEn: "bitcoin", PriceToman: "3000000000"}
@@ -427,6 +640,55 @@ func TestNewCryptoMatch(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "bitcoin") {
 			t.Errorf("error = %q, want it to mention the item name", err)
+		}
+	})
+
+	t.Run("missing amount makes value not-ok, available price or not", func(t *testing.T) {
+		valid, err := newCryptoMatch(Holding{name: "bitcoin"}, Crypto{NameEn: "bitcoin", PriceToman: "3000000000"})
+		if err != nil {
+			t.Fatalf("newCryptoMatch() error = %v", err)
+		}
+		if _, ok := valid.value(); ok {
+			t.Error("value() ok = true, want false without an amount")
+		}
+
+		unavail, err := newCryptoMatch(Holding{name: "bitcoin", amount: 1, hasAmount: true}, Crypto{NameEn: "bitcoin", PriceToman: "-1"})
+		if err == nil {
+			t.Fatal("newCryptoMatch() error = nil, want error")
+		}
+		if _, ok := unavail.value(); ok {
+			t.Error("value() ok = true, want false for an unusable price")
+		}
+	})
+
+	t.Run("zero price value is not-ok, distinguishable from a real zero", func(t *testing.T) {
+		// Zero price: unavailable, so value() fails even with a supplied
+		// amount — it must never masquerade as a zero valuation.
+		m, err := newCryptoMatch(Holding{amount: 10, hasAmount: true}, Crypto{NameEn: "bitcoin", PriceToman: "0"})
+		if err == nil {
+			t.Fatal("newCryptoMatch() error = nil, want error")
+		}
+		if v, ok := m.value(); ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, false)", v, ok)
+		}
+
+		// A real calculated zero (positive price, zero amount) is ok:
+		// (0, true) vs (0, false) is the required distinction.
+		zeroAmount, err := newCryptoMatch(Holding{amount: 0, hasAmount: true}, Crypto{NameEn: "ethereum", PriceToman: "1500000"})
+		if err != nil {
+			t.Fatalf("newCryptoMatch() error = %v", err)
+		}
+		if v, ok := zeroAmount.value(); !ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, true)", v, ok)
+		}
+
+		// Positive prices with supplied amounts still calculate correctly.
+		good, err := newCryptoMatch(Holding{amount: 10, hasAmount: true}, Crypto{NameEn: "ethereum", PriceToman: "1500000"})
+		if err != nil {
+			t.Fatalf("newCryptoMatch() error = %v", err)
+		}
+		if v, ok := good.value(); !ok || v != 15000000 {
+			t.Errorf("value() = (%v, %v), want (15000000, true)", v, ok)
 		}
 	})
 
