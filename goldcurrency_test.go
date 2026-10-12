@@ -252,8 +252,8 @@ func TestFetchGoldCurrency(t *testing.T) {
 	})
 
 	t.Run("non-200 status returns error", func(t *testing.T) {
-		// The specific error text comes from fetchBody and is tested there.
-		// Here we only verify that fetchGoldCurrency propagates it.
+		// The error text comes from fetchBody; here we only verify that
+		// fetchGoldCurrency propagates it.
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "server error", http.StatusInternalServerError)
 		}))
