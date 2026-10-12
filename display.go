@@ -56,7 +56,11 @@ func cryptoCard(m CryptoMatch) card {
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(tw, "Price\t$%s\n", formatNumericString(item.Price))
-	fmt.Fprintf(tw, "Price (Toman)\t%s\n", formatNumericString(item.PriceToman))
+	if m.priceUnavailable {
+		fmt.Fprintf(tw, "Price (Toman)\tunavailable\n")
+	} else {
+		fmt.Fprintf(tw, "Price (Toman)\t%s\n", formatNumericString(item.PriceToman))
+	}
 	fmt.Fprintf(tw, "Change\t%+.2f%%\n", item.ChangePercent)
 	if item.MarketCap != 0 {
 		fmt.Fprintf(tw, "Market Cap\t%s\n", numPrinter.Sprintf("$%d", item.MarketCap))

@@ -328,6 +328,18 @@ func TestGoldCurrencyCard(t *testing.T) {
 	})
 }
 
+// tomanRow extracts the value of the "Price (Toman)" row from the joined
+// rows of a crypto card. The exact spacing depends on tabwriter alignment,
+// which varies with the rest of the card, so tests assert on values instead.
+func tomanRow(joined string) string {
+	for line := range strings.SplitSeq(joined, "\n") {
+		if rest, ok := strings.CutPrefix(line, "Price (Toman)"); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return "<no Price (Toman) row>"
+}
+
 func TestCryptoCard(t *testing.T) {
 	baseItem := Crypto{
 		NameEn:     "Bitcoin",
@@ -395,6 +407,61 @@ func TestCryptoCard(t *testing.T) {
 		}
 		if !strings.Contains(joined, "1,500,000,000 Toman") {
 			t.Errorf("computed value should be present\nrows:\n%s", joined)
+		}
+	})
+
+	t.Run("unavailable price is distinguished from a real calculated value", func(t *testing.T) {
+		unavailable := cryptoCard(CryptoMatch{
+			Holding:          Holding{name: "bitcoin", amount: 1, hasAmount: true},
+			Item:             baseItem,
+			priceUnavailable: true,
+		})
+		unavailRows := strings.Join(unavailable.Rows, "\n")
+		if !strings.Contains(unavailRows, "unavailable") {
+			t.Errorf("unavailable price should show an indicator\nrows:\n%s", unavailRows)
+		}
+		// No calculated value can exist without a usable price.
+		if strings.Contains(unavailRows, "Your Amount") {
+			t.Errorf("Your Amount row should be omitted for an unusable price\nrows:\n%s", unavailRows)
+		}
+		// The USD price row is independent of the Toman validation and stays.
+		if !strings.Contains(unavailRows, "$12,345.67") {
+			t.Errorf("USD price row should be unchanged\nrows:\n%s", unavailRows)
+		}
+
+		// A zero Toman price is unavailable: no indicator-free zero row and
+		// no calculated value, even though the user supplied an amount.
+		zeroMatch, err := newCryptoMatch(
+			Holding{name: "bitcoin", amount: 10, hasAmount: true},
+			Crypto{NameEn: "Bitcoin", Price: "12345.67", PriceToman: "0"},
+		)
+		if err == nil {
+			t.Fatal("newCryptoMatch(zero price) error = nil, want error")
+		}
+		zero := cryptoCard(zeroMatch)
+		zeroRows := strings.Join(zero.Rows, "\n")
+		if tomanRow(zeroRows) != "unavailable" {
+			t.Errorf("zero price should render Toman row as unavailable, got %q\nrows:\n%s", tomanRow(zeroRows), zeroRows)
+		}
+		if strings.Contains(zeroRows, "Your Amount") {
+			t.Errorf("Your Amount row should be omitted for a zero price\nrows:\n%s", zeroRows)
+		}
+		if !strings.Contains(zeroRows, "$12,345.67") {
+			t.Errorf("USD price row should be unchanged\nrows:\n%s", zeroRows)
+		}
+
+		// A positive valid price is still displayed and calculated.
+		good := cryptoCard(CryptoMatch{
+			Holding:    Holding{name: "bitcoin", amount: 1, hasAmount: true},
+			Item:       baseItem,
+			priceToman: 3000000000,
+		})
+		goodRows := strings.Join(good.Rows, "\n")
+		if tomanRow(goodRows) != "3,000,000,000" {
+			t.Errorf("positive price should render its value, got %q\nrows:\n%s", tomanRow(goodRows), goodRows)
+		}
+		if !strings.Contains(goodRows, "3,000,000,000 Toman") {
+			t.Errorf("positive price should compute a value\nrows:\n%s", goodRows)
 		}
 	})
 }
