@@ -40,6 +40,9 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	var result AssetLookup
 	found := make(map[string]struct{}, len(holdings))
 
+	// Both fetch functions select items by comparing normalizeName of the
+	// item's NameEn against these same normalized holding names, so every item
+	// they return has a byName entry and the lookups below cannot miss.
 	goldCurrency, goldErr := fetchGoldCurrency(ctx, client, goldCurrencyBaseURL, apiKey, names)
 	if goldErr != nil {
 		goldErr = fmt.Errorf("fetching gold/currency: %w", goldErr)
