@@ -83,7 +83,7 @@ func TestFetchGoldCurrency(t *testing.T) {
 				"price": 12345678,
 				"change_percent": 1.25,
 				"market_cap": 987654321,
-				"unit": "Toman/gram"
+				"unit": "تومان"
 			}
 		],
 		"currency": [
@@ -95,7 +95,7 @@ func TestFetchGoldCurrency(t *testing.T) {
 				"price": 900000,
 				"change_percent": -0.5,
 				"market_cap": 0,
-				"unit": "Toman"
+				"unit": "تومان"
 			}
 		]
 	}`
@@ -150,8 +150,8 @@ func TestFetchGoldCurrency(t *testing.T) {
 		if g.MarketCap != 987654321 {
 			t.Errorf("Gold.MarketCap = %d, want %d", g.MarketCap, 987654321)
 		}
-		if g.Unit != "Toman/gram" {
-			t.Errorf("Gold.Unit = %q, want %q", g.Unit, "Toman/gram")
+		if g.Unit != "تومان" {
+			t.Errorf("Gold.Unit = %q, want %q", g.Unit, "تومان")
 		}
 
 		c, ok := find("US Dollar")
@@ -173,8 +173,8 @@ func TestFetchGoldCurrency(t *testing.T) {
 		if c.ChangePercent != -0.5 {
 			t.Errorf("Currency.ChangePercent = %v, want %v", c.ChangePercent, -0.5)
 		}
-		if c.Unit != "Toman" {
-			t.Errorf("Currency.Unit = %q, want %q", c.Unit, "Toman")
+		if c.Unit != "تومان" {
+			t.Errorf("Currency.Unit = %q, want %q", c.Unit, "تومان")
 		}
 	})
 

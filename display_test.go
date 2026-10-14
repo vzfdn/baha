@@ -195,7 +195,7 @@ func TestRenderResult(t *testing.T) {
 					NameEn: "Gold 18K",
 					Symbol: "XAU18K",
 					Price:  12345678,
-					Unit:   "Toman/gram",
+					Unit:   "تومان",
 				},
 			}},
 		}
@@ -226,7 +226,7 @@ func TestRenderResult(t *testing.T) {
 		lookup := AssetLookup{
 			GoldCurrency: []GoldCurrencyMatch{{
 				Holding: Holding{name: "gold", amount: 2, hasAmount: true},
-				Item:    GoldCurrencyItem{NameEn: "Gold", Price: 1000},
+				Item:    GoldCurrencyItem{NameEn: "Gold", Price: 1000, Unit: "تومان"},
 			}},
 		}
 		got := renderResult(lookup)
@@ -262,7 +262,7 @@ func TestGoldCurrencyCard(t *testing.T) {
 		NameEn: "Gold",
 		Symbol: "XAU",
 		Price:  1000,
-		Unit:   "Toman/gram",
+		Unit:   "تومان",
 	}
 
 	t.Run("header matches item name", func(t *testing.T) {
@@ -326,6 +326,70 @@ func TestGoldCurrencyCard(t *testing.T) {
 			t.Errorf("computed value should be present\nrows:\n%s", joined)
 		}
 	})
+
+	t.Run("toman unit is rendered as Toman", func(t *testing.T) {
+		got := goldCurrencyCard(GoldCurrencyMatch{
+			Holding: Holding{name: "gold"},
+			Item:    baseItem,
+		})
+		joined := strings.Join(got.Rows, "\n")
+		if !strings.Contains(joined, "1,000 Toman") {
+			t.Errorf("price row should show the translated unit\nrows:\n%s", joined)
+		}
+		if strings.Contains(joined, "تومان") {
+			t.Errorf("raw Persian unit should not be rendered\nrows:\n%s", joined)
+		}
+	})
+
+	t.Run("dollar-denominated price displays Dollar and omits Your Amount", func(t *testing.T) {
+		// Gold Ounce is priced in dollars: the card keeps the price and its
+		// translated unit but has no Toman valuation to print.
+		m := GoldCurrencyMatch{
+			Holding: Holding{name: "gold ounce", amount: 1, hasAmount: true},
+			Item:    GoldCurrencyItem{NameEn: "Gold Ounce", Symbol: "XAUUSD", Price: 4143, Unit: "دلار"},
+		}
+		got := goldCurrencyCard(m)
+		joined := strings.Join(got.Rows, "\n")
+		if !strings.Contains(joined, "4,143 Dollar") {
+			t.Errorf("price row should show the translated dollar unit\nrows:\n%s", joined)
+		}
+		if strings.Contains(joined, "Your Amount") {
+			t.Errorf("Your Amount row should be omitted for a dollar price\nrows:\n%s", joined)
+		}
+	})
+
+	t.Run("rendering preserves the provider unit", func(t *testing.T) {
+		m := GoldCurrencyMatch{
+			Holding: Holding{name: "gold", amount: 2, hasAmount: true},
+			Item:    baseItem,
+		}
+		goldCurrencyCard(m)
+		if m.Item.Unit != "تومان" {
+			t.Errorf("item Unit after rendering = %q, want the provider's %q", m.Item.Unit, "تومان")
+		}
+	})
+}
+
+func TestUnitLabel(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"toman", "تومان", "Toman"},
+		{"dollar", "دلار", "Dollar"},
+		{"compound unit unchanged", "تومان/گرم", "تومان/گرم"},
+		{"dollar suffix word unchanged", "دلار آمریکا", "دلار آمریکا"},
+		{"already-english unchanged", "Toman", "Toman"},
+		{"empty unchanged", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := unitLabel(tt.input); got != tt.want {
+				t.Errorf("unitLabel(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }
 
 // tomanRow extracts the value of the "Price (Toman)" row from the joined

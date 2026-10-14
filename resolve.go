@@ -91,8 +91,11 @@ type GoldCurrencyMatch struct {
 	Item    GoldCurrencyItem
 }
 
+// value returns the holding's Toman value. A price denominated in another
+// currency (Gold Ounce is quoted in dollars) has no Toman value without an
+// exchange-rate policy, so it returns false.
 func (gcm GoldCurrencyMatch) value() (toman float64, ok bool) {
-	if !gcm.Holding.hasAmount {
+	if !gcm.Holding.hasAmount || gcm.Item.Unit != "تومان" {
 		return 0, false
 	}
 	return gcm.Holding.amount * float64(gcm.Item.Price), true

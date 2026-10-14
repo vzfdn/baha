@@ -26,13 +26,26 @@ func renderResult(lookup AssetLookup) string {
 	return renderCards(cards)
 }
 
+// unitLabel renders the provider's unit field in English for known unit
+// values; anything else is printed as sent.
+func unitLabel(u string) string {
+	switch u {
+	case "تومان":
+		return "Toman"
+	case "دلار":
+		return "Dollar"
+	default:
+		return u
+	}
+}
+
 // goldCurrencyCard creates a display card for a gold or currency asset.
 func goldCurrencyCard(m GoldCurrencyMatch) card {
 	item := m.Item
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(tw, "Symbol\t%s\n", item.Symbol)
-	fmt.Fprintf(tw, "Price\t%s %s\n", numPrinter.Sprintf("%d", item.Price), item.Unit)
+	fmt.Fprintf(tw, "Price\t%s %s\n", numPrinter.Sprintf("%d", item.Price), unitLabel(item.Unit))
 	fmt.Fprintf(tw, "Change\t%+.2f%%\n", item.ChangePercent)
 	if item.MarketCap != 0 {
 		fmt.Fprintf(tw, "Market Cap\t%s\n", numPrinter.Sprintf("$%d", item.MarketCap))

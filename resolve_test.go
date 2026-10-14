@@ -707,7 +707,7 @@ func TestGoldCurrencyMatch(t *testing.T) {
 	t.Run("value is not-ok when no amount", func(t *testing.T) {
 		m := GoldCurrencyMatch{
 			Holding: Holding{name: "gold"},
-			Item:    GoldCurrencyItem{Price: 1000},
+			Item:    GoldCurrencyItem{Price: 1000, Unit: "تومان"},
 		}
 		v, ok := m.value()
 		if ok {
@@ -721,7 +721,7 @@ func TestGoldCurrencyMatch(t *testing.T) {
 	t.Run("value is amount times price", func(t *testing.T) {
 		m := GoldCurrencyMatch{
 			Holding: Holding{name: "gold", amount: 2.5, hasAmount: true},
-			Item:    GoldCurrencyItem{Price: 1000},
+			Item:    GoldCurrencyItem{Price: 1000, Unit: "تومان"},
 		}
 		v, ok := m.value()
 		if !ok {
@@ -729,6 +729,19 @@ func TestGoldCurrencyMatch(t *testing.T) {
 		}
 		if v != 2500 {
 			t.Errorf("value() = %v, want 2500", v)
+		}
+	})
+
+	t.Run("dollar-denominated price has no Toman valuation", func(t *testing.T) {
+		// The Gold Ounce item is found and priced, but in dollars; its value
+		// printed as Toman cannot be computed without an exchange-rate
+		// policy, so value() reports unavailable rather than a Toman figure.
+		m := GoldCurrencyMatch{
+			Holding: Holding{name: "gold ounce", amount: 1, hasAmount: true},
+			Item:    GoldCurrencyItem{NameEn: "Gold Ounce", Price: 4143, Unit: "دلار"},
+		}
+		if v, ok := m.value(); ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, false)", v, ok)
 		}
 	})
 
