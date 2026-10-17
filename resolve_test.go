@@ -745,12 +745,27 @@ func TestGoldCurrencyMatch(t *testing.T) {
 		}
 	})
 
-	t.Run("formatAmount rounds to whole number", func(t *testing.T) {
-		// Gold/currency amounts are typically whole units; the formatter
-		// reflects that with %.0f. This test documents the choice.
-		m := GoldCurrencyMatch{Holding: Holding{amount: 2.7, hasAmount: true}}
-		if got := m.formatAmount(); got != "3" {
-			t.Errorf("formatAmount() = %q, want %q", got, "3")
+	t.Run("formatAmount keeps fractional amounts exact", func(t *testing.T) {
+		// The label must agree with the value, which is computed from the
+		// amount as written, so fractional grams are not rounded.
+		tests := []struct {
+			name   string
+			amount float64
+			want   string
+		}{
+			{"whole amount", 3, "3"},
+			{"fractional amount", 2.7, "2.7"},
+			{"half gram", 0.5, "0.5"},
+			{"small amount without scientific notation", 0.00001, "0.00001"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				m := GoldCurrencyMatch{Holding: Holding{amount: tt.amount, hasAmount: true}}
+				if got := m.formatAmount(); got != tt.want {
+					t.Errorf("formatAmount() = %q, want %q", got, tt.want)
+				}
+			})
 		}
 	})
 }

@@ -102,7 +102,7 @@ func (gcm GoldCurrencyMatch) value() (toman float64, ok bool) {
 }
 
 func (gcm GoldCurrencyMatch) formatAmount() string {
-	return numPrinter.Sprintf("%.0f", gcm.Holding.amount)
+	return strconv.FormatFloat(gcm.Holding.amount, 'f', -1, 64)
 }
 
 // CryptoMatch pairs a requested Holding with the Crypto item that resolved
