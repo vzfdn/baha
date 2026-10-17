@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("invalid input: %v", err)
 	}
 	if len(holdings) == 0 {
-		log.Fatal(`usage: go run . asset1=amount asset2=amount ...`)
+		log.Fatal(`usage: baha asset1[=amount] asset2[=amount] ...`)
 	}
 
 	if err := godotenv.Load(); err != nil {

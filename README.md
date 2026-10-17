@@ -80,9 +80,12 @@ If `API_KEY` is empty, the program stops with `API_KEY not set`.
 
 ## Usage
 
+```text
+go run . asset1[=amount] asset2[=amount] ...     # from source
+./baha asset1[=amount] asset2[=amount] ...       # built binary
 ```
-go run . asset1[=amount] asset2[=amount] ...
-```
+
+The amount is optional; `=amount` is the part in brackets.
 
 - An asset may be given as a bare name to print its price, or as `name=amount`
   to also calculate the value of that amount (for items whose price is in
