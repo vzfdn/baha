@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Avoid cancelling main runs; cancel superseded PR runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Format, modules, vet, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Use go.mod's version so CI can't drift from what the project declares.
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # gofmt -l exits 0 even when files need formatting, so check its output.
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)" || exit 1
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-formatted: $unformatted"
+            exit 1
+          fi
+
+      - name: Verify module files
+        run: |
+          go mod verify
+          go mod tidy -diff
+
+      - name: Vet
+        run: go vet ./...
+
+      # No API key needed: tests use local httptest servers and fakes.
+      # Shuffling catches hidden test-order dependencies that -race can't see.
+      - name: Test with race detector and shuffled order
+        run: go test -race -shuffle=on -count=1 ./...
