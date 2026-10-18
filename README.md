@@ -53,9 +53,14 @@ provider and prints what that provider returns.
 
 ## Configuration
 
-The program reads its key from the `API_KEY` environment variable. The simplest
-way to set it is a local `.env` file, which the program loads on startup with
-[`godotenv`](https://github.com/joho/godotenv):
+The program reads its key from `API_KEY`, taken from the environment or from a
+`.env` file in the directory the program is run from (the current working
+directory, not next to the binary). The file is loaded on startup with
+[`godotenv`](https://github.com/joho/godotenv), which never overrides a variable
+that is already set, so an exported `API_KEY` takes precedence over `.env`. Get
+a key from <https://brsapi.ir/>.
+
+To start from a local file:
 
 ```bash
 cp .env.sample .env
@@ -68,9 +73,8 @@ Then edit `.env` and set the value:
 API_KEY=your-key-here
 ```
 
-`.env` is git-ignored and must never be committed. If no `.env` file exists,
-the program falls back to the environment it was started in, which is the
-right choice in a container or CI job:
+`.env` is git-ignored and must never be committed. In a container or CI job,
+export the key instead:
 
 ```bash
 API_KEY=your-key-here go run . bitcoin
@@ -249,10 +253,11 @@ documents:
 the raw metal price. A retail purchase of gold or coins in the Iranian market
 typically adds seller-side charges on top of it:
 
-- اجرت ساخت (manufacturing/making charge), a percentage;
-- سود فروشنده (seller's profit), a percentage;
-- مالیات بر ارزش افزوده (value-added tax), applied to the making charge and
-  the seller's profit rather than to the raw metal value.
+| Persian term          | English meaning                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| اجرت ساخت             | manufacturing/making charge, a percentage                                                                |
+| سود فروشنده           | seller's profit, a percentage                                                                            |
+| مالیات بر ارزش افزوده | value-added tax, applied to the making charge and the seller's profit rather than to the raw metal value |
 
 `Your Amount` reports `amount × price` and nothing else, so where these
 charges apply, the card's figure is lower than what a shop would charge. They
@@ -302,15 +307,19 @@ A few behaviors are deliberate and worth knowing before reading the code:
   every relevant source was queried successfully and none of them contained it.
   If a source failed, the name is `Unverified` instead: "could not check". A name
   is never reported as both.
-- **An unavailable price is not a zero price.** A cryptocurrency is counted as
-  found even when its Toman price cannot be used, and the card shows
-  `Price (Toman) unavailable` rather than discarding the asset or treating the
-  price as zero. Only a positive, finite number is accepted as a usable price;
-  the provider returns `0` for some assets whose USD price is non-zero, which
-  looks like missing or unconverted data rather than a real zero valuation.
+- **An unavailable price is not a zero price.** A gold, currency, or
+  cryptocurrency item is counted as found even when its price cannot be used,
+  and its card shows `Price unavailable` (or `Price (Toman) unavailable` for
+  crypto) rather than discarding the asset or treating the price as zero. Only
+  a positive, finite number is accepted as a usable price; the provider returns
+  `0` for some assets whose USD price is non-zero, which looks like missing or
+  unconverted data rather than a real zero valuation.
 - **The API key is kept out of error text.** Request failures are reported by
   host name only, because the underlying `url.Error` would otherwise include the
   full request URL, which carries the key.
+- **Requests look like a browser.** `baha` sends a browser-like `User-Agent`
+  because BrsApi's firewall rejects Go's default, so a future firewall change
+  may break requests.
 - **The whole lookup shares one deadline.** All requests for a single run share
   a ten-second timeout.
 
