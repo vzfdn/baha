@@ -503,6 +503,71 @@ func TestResolveAssets(t *testing.T) {
 		}
 	})
 
+	t.Run("unusable gold price is reported without aborting", func(t *testing.T) {
+		client := fakeClient(
+			t,
+			mustJSON(t, goldCurrencyResponse{
+				Gold: []GoldCurrencyItem{{NameEn: "gold", Symbol: "XAU", Price: 0, Unit: "تومان"}},
+			}),
+			mustJSON(t, []Crypto{}),
+		)
+
+		holdings := []Holding{{name: "gold", amount: 2, hasAmount: true}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "price unavailable") || !strings.Contains(err.Error(), "gold") {
+			t.Errorf("error = %q, want the item-level price context for gold", err)
+		}
+		// The asset is still resolved, just without a usable price.
+		if len(got.GoldCurrency) != 1 || got.GoldCurrency[0].Item.NameEn != "gold" {
+			t.Fatalf("got.GoldCurrency = %+v, want the gold match retained", got.GoldCurrency)
+		}
+		if v, ok := got.GoldCurrency[0].value(); ok || v != 0 {
+			t.Errorf("value() = (%v, %v), want (0, false) despite amount 2", v, ok)
+		}
+		// Found means found, regardless of price usability.
+		if len(got.Missing) != 0 || len(got.Unverified) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
+		}
+	})
+
+	t.Run("mix of usable and unusable gold prices preserves matches", func(t *testing.T) {
+		client := fakeClient(
+			t,
+			mustJSON(t, goldCurrencyResponse{
+				Gold: []GoldCurrencyItem{
+					{NameEn: "gold", Symbol: "XAU", Price: 1000, Unit: "تومان"},
+					{NameEn: "silver", Symbol: "XAG", Price: -5, Unit: "تومان"},
+				},
+			}),
+			mustJSON(t, []Crypto{}),
+		)
+
+		holdings := []Holding{{name: "gold", amount: 2, hasAmount: true}, {name: "silver", amount: 3, hasAmount: true}}
+		got, err := resolveAssets(context.Background(), client, "test-key", holdings)
+		if err == nil {
+			t.Fatal("resolveAssets() error = nil, want error")
+		}
+		if !strings.Contains(err.Error(), "price unavailable") || !strings.Contains(err.Error(), "silver") {
+			t.Errorf("error = %q, want the item-level price context for silver", err)
+		}
+		if len(got.GoldCurrency) != 2 {
+			t.Fatalf("len(got.GoldCurrency) = %d, want 2", len(got.GoldCurrency))
+		}
+		// Results follow provider order, not request order.
+		if v, ok := got.GoldCurrency[0].value(); !ok || v != 2000 {
+			t.Errorf("gold value() = (%v, %v), want (2000, true)", v, ok)
+		}
+		if v, ok := got.GoldCurrency[1].value(); ok || v != 0 {
+			t.Errorf("silver value() = (%v, %v), want (0, false)", v, ok)
+		}
+		if len(got.Missing) != 0 || len(got.Unverified) != 0 {
+			t.Errorf("got.Missing = %+v, got.Unverified = %+v, want neither", got.Missing, got.Unverified)
+		}
+	})
+
 	t.Run("case-insensitive match preserves API name", func(t *testing.T) {
 		client := fakeClient(
 			t,
@@ -528,6 +593,70 @@ func TestResolveAssets(t *testing.T) {
 		if got.GoldCurrency[0].Holding.name != "  GOLD  " {
 			t.Errorf("Holding.name = %q, want the original user input %q",
 				got.GoldCurrency[0].Holding.name, "  GOLD  ")
+		}
+	})
+}
+
+func TestNewGoldCurrencyMatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		price int64
+	}{
+		{"zero price", 0},
+		{"negative price", -1},
+	}
+
+	t.Run("unusable prices are rejected but the match is kept", func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				h := Holding{name: "gold", amount: 10, hasAmount: true}
+				item := GoldCurrencyItem{NameEn: "gold", Price: tt.price, Unit: "تومان"}
+
+				got, err := newGoldCurrencyMatch(h, item)
+				if err == nil {
+					t.Fatalf("newGoldCurrencyMatch(price %d) error = nil, want error", tt.price)
+				}
+				if !strings.Contains(err.Error(), "price") || !strings.Contains(err.Error(), "gold") {
+					t.Errorf("error = %q, want it to mention the price and the item name", err)
+				}
+				// The resolved asset is still returned so the caller can keep it.
+				if got.Holding != h {
+					t.Errorf("Holding = %+v, want %+v", got.Holding, h)
+				}
+				if got.Item.NameEn != "gold" {
+					t.Errorf("Item.NameEn = %q, want %q", got.Item.NameEn, "gold")
+				}
+				if got.priceUsable() {
+					t.Error("priceUsable() = true, want false")
+				}
+				if v, ok := got.value(); ok || v != 0 {
+					t.Errorf("value() = (%v, %v), want (0, false) despite amount 10", v, ok)
+				}
+			})
+		}
+	})
+
+	t.Run("positive price is usable and evaluated", func(t *testing.T) {
+		h := Holding{name: "gold", amount: 2, hasAmount: true}
+		got, err := newGoldCurrencyMatch(h, GoldCurrencyItem{NameEn: "gold", Price: 1000, Unit: "تومان"})
+		if err != nil {
+			t.Fatalf("newGoldCurrencyMatch() error = %v", err)
+		}
+		if !got.priceUsable() {
+			t.Error("priceUsable() = false, want true")
+		}
+		if v, ok := got.value(); !ok || v != 2000 {
+			t.Errorf("value() = (%v, %v), want (2000, true)", v, ok)
+		}
+	})
+
+	t.Run("missing amount makes value not-ok even with a usable price", func(t *testing.T) {
+		got, err := newGoldCurrencyMatch(Holding{name: "gold"}, GoldCurrencyItem{NameEn: "gold", Price: 1000, Unit: "تومان"})
+		if err != nil {
+			t.Fatalf("newGoldCurrencyMatch() error = %v", err)
+		}
+		if _, ok := got.value(); ok {
+			t.Error("value() ok = true, want false without an amount")
 		}
 	})
 }

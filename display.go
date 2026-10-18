@@ -45,7 +45,11 @@ func goldCurrencyCard(m GoldCurrencyMatch) card {
 	var buf bytes.Buffer
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(tw, "Symbol\t%s\n", item.Symbol)
-	fmt.Fprintf(tw, "Price\t%s %s\n", numPrinter.Sprintf("%d", item.Price), unitLabel(item.Unit))
+	if m.priceUsable() {
+		fmt.Fprintf(tw, "Price\t%s %s\n", numPrinter.Sprintf("%d", item.Price), unitLabel(item.Unit))
+	} else {
+		fmt.Fprintf(tw, "Price\tunavailable\n")
+	}
 	fmt.Fprintf(tw, "Change\t%+.2f%%\n", item.ChangePercent)
 	if item.MarketCap != 0 {
 		fmt.Fprintf(tw, "Market Cap\t%s\n", numPrinter.Sprintf("$%d", item.MarketCap))

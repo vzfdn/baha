@@ -327,6 +327,37 @@ func TestGoldCurrencyCard(t *testing.T) {
 		}
 	})
 
+	t.Run("unusable price shows unavailable and omits Your Amount", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			price int64
+		}{
+			{"zero price", 0},
+			{"negative price", -5},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				m, err := newGoldCurrencyMatch(
+					Holding{name: "gold", amount: 2, hasAmount: true},
+					GoldCurrencyItem{NameEn: "Gold", Symbol: "XAU", Price: tt.price, Unit: "تومان"},
+				)
+				if err == nil {
+					t.Fatalf("newGoldCurrencyMatch(price %d) error = nil, want error", tt.price)
+				}
+				joined := strings.Join(goldCurrencyCard(m).Rows, "\n")
+				if !strings.Contains(joined, "Price") || !strings.Contains(joined, "unavailable") {
+					t.Errorf("price row should say unavailable\nrows:\n%s", joined)
+				}
+				if strings.Contains(joined, "Toman") {
+					t.Errorf("unusable price should not render a Toman value\nrows:\n%s", joined)
+				}
+				if strings.Contains(joined, "Your Amount") {
+					t.Errorf("Your Amount row should be omitted for an unusable price\nrows:\n%s", joined)
+				}
+			})
+		}
+	})
+
 	t.Run("toman unit is rendered as Toman", func(t *testing.T) {
 		got := goldCurrencyCard(GoldCurrencyMatch{
 			Holding: Holding{name: "gold"},

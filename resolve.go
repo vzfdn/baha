@@ -47,9 +47,17 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	if goldErr != nil {
 		goldErr = fmt.Errorf("fetching gold/currency: %w", goldErr)
 	}
+	// Price failures are collected rather than aborting the loop. Each item
+	// is still appended and its name recorded as found: an unusable price
+	// does not make the asset Missing or Unverified.
+	var itemErrs []error
 	for _, item := range goldCurrency {
 		key := normalizeName(item.NameEn)
-		result.GoldCurrency = append(result.GoldCurrency, GoldCurrencyMatch{Holding: byName[key], Item: item})
+		m, err := newGoldCurrencyMatch(byName[key], item)
+		if err != nil {
+			itemErrs = append(itemErrs, fmt.Errorf("price unavailable: %w", err))
+		}
+		result.GoldCurrency = append(result.GoldCurrency, m)
 		found[key] = struct{}{}
 	}
 
@@ -57,9 +65,6 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 	if cryptoErr != nil {
 		cryptoErr = fmt.Errorf("fetching crypto: %w", cryptoErr)
 	}
-	// Item-level price failures are reported but do not abort the loop:
-	// the remaining requested cryptocurrencies with valid prices are kept.
-	var itemErrs []error
 	for _, item := range crypto {
 		key := normalizeName(item.NameEn)
 		m, err := newCryptoMatch(byName[key], item)
@@ -67,8 +72,6 @@ func resolveAssets(ctx context.Context, client *http.Client, apiKey string, hold
 			itemErrs = append(itemErrs, fmt.Errorf("price unavailable: %w", err))
 		}
 		result.Crypto = append(result.Crypto, m)
-		// The asset was found even if its price is unusable, so it must not
-		// be classified as Missing or Unverified.
 		found[key] = struct{}{}
 	}
 
@@ -91,14 +94,31 @@ type GoldCurrencyMatch struct {
 	Item    GoldCurrencyItem
 }
 
-// value returns the holding's Toman value. A price denominated in another
-// currency (Gold Ounce is quoted in dollars) has no Toman value without an
-// exchange-rate policy, so it returns false.
+// priceUsable reports whether the price is usable. Zero and negative values
+// are treated as missing data, not as a real valuation.
+func (gcm GoldCurrencyMatch) priceUsable() bool {
+	return gcm.Item.Price > 0
+}
+
+// value returns the holding's Toman value. An unusable price, a price
+// denominated in another currency (Gold Ounce is quoted in dollars), or a
+// missing amount has no Toman value, so it returns false.
 func (gcm GoldCurrencyMatch) value() (toman float64, ok bool) {
-	if !gcm.Holding.hasAmount || gcm.Item.Unit != "تومان" {
+	if !gcm.priceUsable() || !gcm.Holding.hasAmount || gcm.Item.Unit != "تومان" {
 		return 0, false
 	}
 	return gcm.Holding.amount * float64(gcm.Item.Price), true
+}
+
+// newGoldCurrencyMatch pairs h with item. An unusable price is reported as
+// an error, but the match is still returned so the caller can keep the
+// resolved asset and record the error separately instead of discarding it.
+func newGoldCurrencyMatch(h Holding, item GoldCurrencyItem) (GoldCurrencyMatch, error) {
+	m := GoldCurrencyMatch{Holding: h, Item: item}
+	if !m.priceUsable() {
+		return m, fmt.Errorf("price for %s must be a positive number, got %d", item.NameEn, item.Price)
+	}
+	return m, nil
 }
 
 func (gcm GoldCurrencyMatch) formatAmount() string {
